@@ -1,7 +1,7 @@
 #! /usr/bin/python3.9
 
 """
-This is an example for using `pyos.py` module.
+This is an example for using `PyOs` module.
 look at that file docstrings for more information.
 Mahyar@Mahyar24.com, Sat 19 Oct 2019.
 """
@@ -35,7 +35,7 @@ def handle_client(client, address):
         except UnicodeError:
             break
         yield SystemCallRequest(SystemCall.WAIT_IO_WRITE, io=client)
-        client.send(b'Server Got Your Message: "' + data[:-1] + b'".\n')
+        client.send(b'Server Got Your Message: "' + data.strip() + b'".\n')
     yield SystemCallRequest(SystemCall.WAIT_IO_WRITE, io=client)
     client.close()
     print(f"{address!r} closed.")

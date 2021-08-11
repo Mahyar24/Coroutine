@@ -1,3 +1,5 @@
 __pycache__/
 .idea/
 venv/
+PyOs/__Pycache__/
+.mypy_cache/
