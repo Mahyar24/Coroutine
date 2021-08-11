@@ -8,7 +8,7 @@ Mahyar@Mahyar24.com, Sat 19 Oct 2019.
 
 import socket
 
-from pyos import Scheduler, SystemCall, SystemCallRequest
+from PyOS import Scheduler, SystemCall, SystemCallRequest
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
