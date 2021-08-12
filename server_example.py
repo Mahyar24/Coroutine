@@ -21,13 +21,13 @@ def handle_client(client, address):
     """
     Printing incoming data and send it back.
     """
+    handle_client_id = yield SystemCallRequest(SystemCall.ID)
     while True:
         yield SystemCallRequest(SystemCall.WAIT_IO_READ, io=client)
         data = client.recv(1024)
         if not data:
             break
         try:
-            handle_client_id = yield SystemCallRequest(SystemCall.ID)
             print(
                 f"Incoming data from {address!r} with ID of {handle_client_id!r}:"
                 f'\n---> {data.decode("utf-8").strip()!r}.'

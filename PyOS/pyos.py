@@ -64,9 +64,9 @@ class SystemCallRequest:  # pylint: disable=R0903
                         you will get a PermissionError exception as return value.
         yield SystemCallRequest(
                     SystemCall.WAIT_IO_READ, io=some_socket_waiting_to_read
-                    ) -> wait for IO read. (same for IO write) It's mandatory that you will pass the
-                    run_for_ever argument value to be True in the scheduler .run() method,
-                    unless program will crash and it will raise a ValueError.
+                        ) -> wait for IO read. (same for IO write) It's mandatory that you will pass
+                        the run_for_ever argument value to be True in the scheduler .run() method,
+                        unless program will crash and it will raise a ValueError.
     """
 
     def __init__(  # pylint: disable=R0913
@@ -114,7 +114,7 @@ class SystemCallRequest:  # pylint: disable=R0903
         elif self.request == SystemCall.WAIT:
             if self.id is not None:
                 if (
-                    self.id >= task.id and self.id != sch.io_id
+                    self.id > task.id and self.id != sch.io_id
                 ):  # Check that latter tasks cannot wait on earlier ones.
                     sch.waiting[task.id] = self.id
                 else:
@@ -243,7 +243,7 @@ class Scheduler:  # pylint: disable=R0902
                 del self.waiting[waiting]
         del self.tasks[task_id]
 
-    def io_checking(self, timeout: Optional[float]) -> None:
+    def io_checking(self, timeout: Optional[float]) -> None:  # TODO: use select.epoll instead of select.select.
         """
         Here is all the magic happens. The OS somehow make a notification for us that some IOs
         are ready, and if that occurred the scheduler will context switch to that matter.
