@@ -51,9 +51,10 @@ def server():
         yield SystemCallRequest(SystemCall.WAIT_IO_READ, io=sock)
         client, address = sock.accept()
         print(f"{address!r} connected.")
-        yield SystemCallRequest(
+        new_task_id = yield SystemCallRequest(
             SystemCall.NEW, func=handle_client, args=(client, address)
         )
+        print(f"Creating a task for incoming client with ID of {new_task_id!r}")
 
 
 if __name__ == "__main__":
