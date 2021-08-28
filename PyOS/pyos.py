@@ -4,7 +4,7 @@
 This code is a prototype for having a grasp of how event loops works under the hood.
 The main inspiration is from David Beazley talk (http://dabeaz.com).
 Link to the talk: https://youtu.be/Y4Gt3Xjd7G8. It's awesome.
-It's worth to mention that all of the magic is happening by the select package.
+It's worth to mention that all of the magic is happening by the select library.
 Read the docs about it. https://docs.python.org/3/library/select.html
 this code must NOT used for production.
 Look at the 'server_example.py' file for see this module in use.
@@ -22,8 +22,10 @@ import select
 import time
 from typing import Any, Callable, Generator, Optional, Union
 
+__all__ = ["SystemCall", "SystemCallRequest", "Scheduler"]
 
-class SystemCall(enum.IntEnum):
+
+class SystemCall(enum.Enum):
     """
     For ease of use in `SystemCallRequest` class. this enum indicate your type of requests.
     """
@@ -243,7 +245,9 @@ class Scheduler:  # pylint: disable=R0902
                 del self.waiting[waiting]
         del self.tasks[task_id]
 
-    def io_checking(self, timeout: Optional[float]) -> None:  # TODO: use select.epoll instead of select.select.
+    def io_checking(
+        self, timeout: Optional[float]
+    ) -> None:  # TODO: use select.epoll instead of select.select.
         """
         Here is all the magic happens. The OS somehow make a notification for us that some IOs
         are ready, and if that occurred the scheduler will context switch to that matter.
@@ -283,7 +287,7 @@ class Scheduler:  # pylint: disable=R0902
         while self.tasks:
             item = self.queue.get()
             # print(
-            #     f"Working on {item.id!r}"
+            #      f"Working on {item.id!r}"
             # )  # Increase sleep time and watch the context switching.
             if not self.waiting or item.id not in self.waiting.keys():
                 try:

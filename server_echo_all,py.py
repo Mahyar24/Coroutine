@@ -28,11 +28,15 @@ def echo_to_all_clients(message_queue):
     for client in CLIENTS:
         if client != sender:
             yield SystemCallRequest(SystemCall.WAIT_IO_WRITE, io=client)
-            client.send(
-                bytes(
-                    f"Peer {sender.fileno()!r}: {message.decode('utf-8')!r}\n", "utf-8"
-                )
-            )  # .filno() != id.
+            try:
+                client.send(
+                    bytes(
+                        f"Peer {sender.fileno()!r}: {message.decode('utf-8')!r}\n",
+                        "utf-8",
+                    )
+                )  # .filno() != id.
+            except BrokenPipeError:
+                pass
 
 
 def close_client(client, message_queue, address):
@@ -40,10 +44,14 @@ def close_client(client, message_queue, address):
     Closing the connection and saying that to all remaining clients.
     """
     message_queue.put((client, b"CLOSED!"))  # Making it a message to broadcast!
-    yield SystemCallRequest(
+    closing_id = yield SystemCallRequest(
         SystemCall.NEW, func=echo_to_all_clients, args=(message_queue,)
     )
 
+    yield SystemCallRequest(
+        SystemCall.WAIT, id_=closing_id
+    )  # Wait for telling everybody that the peer is closed, then terminate it.
+    # (so nobody see a message with fileno -1)
     yield SystemCallRequest(SystemCall.WAIT_IO_WRITE, io=client)
     client.close()
     CLIENTS.remove(client)
@@ -89,7 +97,7 @@ def handle_client(client, address, message_queue):
     yield SystemCallRequest(
         SystemCall.WAIT, id_=closing_id
     )  # waiting for connection to terminate.
-    print(f"My existence ({handle_client_id!r}) reached the end; by you all!")
+    print(f"My existence ({handle_client_id!r}) reached the end; Bye you all!")
 
 
 def server():
@@ -114,6 +122,6 @@ def server():
 
 
 if __name__ == "__main__":
-    scheduler = Scheduler(sleep=1e-4, run_for_ever=True)
+    scheduler = Scheduler(sleep=1e-5, run_for_ever=True)
     scheduler.new(server)
     scheduler.run()
