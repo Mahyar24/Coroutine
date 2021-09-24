@@ -197,18 +197,26 @@ class Scheduler:  # pylint: disable=R0902
     Therefore, it will handle the tasks concurrently for you.
     """
 
-    def __init__(self, sleep: float = 0.01, run_for_ever: bool = True) -> None:
+    def __init__(self, interval: float = 0.01, run_for_ever: bool = True) -> None:
         self.queue: queue.Queue = queue.Queue()
         self.tasks: dict[int, Task] = {}
-        self.waiting: dict[
+        self.waiting: dict[  # TODO: must use a list for values.
             int, int
         ] = (
             {}
         )  # Waiting for another coroutine; {1: 2} -> task 1 is waiting for task 2 to complete
-        self.read_waiting: dict[Any, Task] = {}  # waiting for some blocking reading IO
-        self.write_waiting: dict[Any, Task] = {}  # waiting for some blocking reading IO
+        self.read_waiting: dict[
+            Any, Task
+        ] = (
+            {}
+        )  # waiting for some blocking reading IO  # TODO: must use a list for values.
+        self.write_waiting: dict[
+            Any, Task
+        ] = (
+            {}
+        )  # waiting for some blocking reading IO  # TODO: must use a list for values.
         self.io_id: int = 0
-        self.sleep: float = sleep
+        self.interval: float = interval
         self.run_for_ever = run_for_ever
 
     def new(
@@ -309,4 +317,4 @@ class Scheduler:  # pylint: disable=R0902
                     self.schedule(item)
             else:
                 self.schedule(item)
-            time.sleep(self.sleep)
+            time.sleep(self.interval)

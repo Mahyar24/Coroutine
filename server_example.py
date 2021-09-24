@@ -58,6 +58,6 @@ def server():
 
 
 if __name__ == "__main__":
-    scheduler = Scheduler(sleep=0.001, run_for_ever=True)
+    scheduler = Scheduler(interval=0.001, run_for_ever=True)
     scheduler.new(server)
     scheduler.run()

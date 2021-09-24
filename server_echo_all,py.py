@@ -75,6 +75,9 @@ def handle_client(client, address, message_queue):
                 f"Incoming data from {address!r} with ID of {handle_client_id!r}:"
                 f'\n---> {data.decode("utf-8")!r}.'
             )
+        except UnicodeError:
+            break
+        else:
             message_queue.put(
                 (
                     client,
@@ -84,10 +87,9 @@ def handle_client(client, address, message_queue):
             yield SystemCallRequest(
                 SystemCall.NEW, func=echo_to_all_clients, args=(message_queue,)
             )  # Echo back the message to everybody else!
-        except UnicodeError:
-            break
-        yield SystemCallRequest(SystemCall.WAIT_IO_WRITE, io=client)  # Send Ack!
-        client.send(b'Ack: "' + data + b'".\n')
+
+            yield SystemCallRequest(SystemCall.WAIT_IO_WRITE, io=client)  # Send Ack!
+            client.send(b'Ack: "' + data + b'".\n')
 
     closing_id = yield SystemCallRequest(  # Making a coroutine to get closed.
         SystemCall.NEW,
@@ -122,6 +124,6 @@ def server():
 
 
 if __name__ == "__main__":
-    scheduler = Scheduler(sleep=1e-5, run_for_ever=True)
+    scheduler = Scheduler(interval=1e-5, run_for_ever=True)
     scheduler.new(server)
     scheduler.run()
