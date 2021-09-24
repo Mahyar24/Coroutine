@@ -326,7 +326,7 @@ class Scheduler:  # pylint: disable=R0902
         while self.tasks:
             item = self.queue.get()
             # print(
-            #     f"Working on {item.id!r}"
+            #     f"Working on {item.id!r}. Waiting: {dict(self.waiting)}."
             # )  # Increase sleep time and watch the context switching.
             if self.should_not_wait(item):
                 try:

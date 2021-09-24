@@ -40,7 +40,7 @@ def echo_to_all_clients(message_queue):
                         "utf-8",
                     )
                 )  # .filno() != id.
-            except BrokenPipeError:
+            except (BrokenPipeError, OSError):
                 pass
 
     yield SystemCallRequest(SystemCall.ID)  # Look at docstring!
