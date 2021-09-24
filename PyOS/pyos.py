@@ -20,7 +20,8 @@ import enum
 import queue
 import select
 import time
-from typing import Any, Callable, Generator, Optional, Union
+from collections import defaultdict
+from typing import Any, Callable, DefaultDict, Generator, Optional, Union
 
 __all__ = ["SystemCall", "SystemCallRequest", "Scheduler"]
 
@@ -118,7 +119,7 @@ class SystemCallRequest:  # pylint: disable=R0903
                 if (
                     self.id > task.id and self.id != sch.io_id
                 ):  # Check that latter tasks cannot wait on earlier ones.
-                    sch.waiting[task.id] = self.id
+                    sch.waiting[task.id].add(self.id)
                 else:
                     task.val = PermissionError(
                         f"You cannot wait task with id number of: {self.id!r}"
@@ -128,8 +129,8 @@ class SystemCallRequest:  # pylint: disable=R0903
         elif self.request == SystemCall.WAIT_IO_READ:
             if self.io is not None:
                 if sch.run_for_ever:
-                    sch.read_waiting[self.io] = task
-                    sch.waiting[task.id] = sch.io_id
+                    sch.read_waiting[self.io].add(task)
+                    sch.waiting[task.id].add(sch.io_id)
                 else:
                     raise ValueError(
                         "if you want to wait for IO, scheduler 'run_for_ever' must be True."
@@ -139,8 +140,8 @@ class SystemCallRequest:  # pylint: disable=R0903
         elif self.request == SystemCall.WAIT_IO_WRITE:
             if self.io is not None:
                 if sch.run_for_ever:
-                    sch.write_waiting[self.io] = task
-                    sch.waiting[task.id] = sch.io_id
+                    sch.write_waiting[self.io].add(task)
+                    sch.waiting[task.id].add(sch.io_id)
                 else:
                     raise ValueError(
                         "if you want to wait for IO, scheduler 'run_for_ever' must be True."
@@ -200,21 +201,15 @@ class Scheduler:  # pylint: disable=R0902
     def __init__(self, interval: float = 0.01, run_for_ever: bool = True) -> None:
         self.queue: queue.Queue = queue.Queue()
         self.tasks: dict[int, Task] = {}
-        self.waiting: dict[  # TODO: must use a list for values.
-            int, int
-        ] = (
-            {}
+        self.waiting: DefaultDict[int, set[int]] = defaultdict(
+            set
         )  # Waiting for another coroutine; {1: 2} -> task 1 is waiting for task 2 to complete
-        self.read_waiting: dict[
-            Any, Task
-        ] = (
-            {}
-        )  # waiting for some blocking reading IO  # TODO: must use a list for values.
-        self.write_waiting: dict[
-            Any, Task
-        ] = (
-            {}
-        )  # waiting for some blocking reading IO  # TODO: must use a list for values.
+        self.read_waiting: DefaultDict[int, set[Task]] = defaultdict(
+            set
+        )  # waiting for some blocking reading IO
+        self.write_waiting: DefaultDict[int, set[Task]] = defaultdict(
+            set
+        )  # waiting for some blocking reading IO
         self.io_id: int = 0
         self.interval: float = interval
         self.run_for_ever = run_for_ever
@@ -243,15 +238,33 @@ class Scheduler:  # pylint: disable=R0902
         """
         self.queue.put(task)
 
-    def kill(self, task_id: int) -> None:
+    def kill_task_id(self, task_id: int) -> None:
+        """
+        Used internally for `kill` method.
+        """
+        self.waiting.pop(task_id, None)
+        self.read_waiting.pop(task_id, None)
+        self.write_waiting.pop(task_id, None)
+
+        for key in self.waiting:  # remove this task in any wait task queue
+            self.waiting[key].discard(task_id)
+
+        for i in self.read_waiting, self.write_waiting:
+            for key in i:
+                i[key].discard(self.tasks[task_id])
+
+        del self.tasks[task_id]
+
+    def kill(self, item: Task) -> None:
         """
         Used internally for killing tasks and pulling them out of scheduler.
         Equivalent of cancelling in asyncio.
         """
-        for waiting, waiting_for in self.waiting.copy().items():
-            if waiting_for == task_id:
-                del self.waiting[waiting]
-        del self.tasks[task_id]
+
+        for key, value in self.tasks.copy().items():
+            if value == item:
+                self.kill_task_id(key)
+                break
 
     def io_checking(
         self, timeout: Optional[float]
@@ -265,11 +278,15 @@ class Scheduler:  # pylint: disable=R0902
                 self.read_waiting.keys(), self.write_waiting.keys(), (), timeout
             )
             for read_io in read_ios:
-                del self.waiting[self.read_waiting[read_io].id]
-                self.schedule(self.read_waiting.pop(read_io))
+                for i in self.read_waiting[read_io]:
+                    self.waiting[i.id].discard(self.io_id)
+                    self.schedule(i)
+                del self.read_waiting[read_io]
             for write_io in write_ios:
-                del self.waiting[self.write_waiting[write_io].id]
-                self.schedule(self.write_waiting.pop(write_io))
+                for i in self.write_waiting[write_io]:
+                    self.waiting[i.id].discard(self.io_id)
+                    self.schedule(i)
+                del self.write_waiting[write_io]
 
     def io(self) -> Generator[None, Any, None]:  # pylint: disable=C0103
         """
@@ -283,6 +300,20 @@ class Scheduler:  # pylint: disable=R0902
                 self.io_checking(0)
             yield
 
+    def should_not_wait(self, item: Task) -> bool:
+        """
+        Determining that we should wait (based on queue item) or we should run.
+        """
+        if self.waiting:
+            if all(
+                (v == set() for v in self.waiting.values())
+            ):  # if all ot the values were empty sets we shouldn't wait
+                return True
+            if item.id not in self.waiting.keys() or not self.waiting[item.id]:
+                return True
+            return False
+        return True
+
     def run(self) -> None:
         """
         The main loop begins and exist in here. This method will iterate over the tasks and
@@ -295,26 +326,17 @@ class Scheduler:  # pylint: disable=R0902
         while self.tasks:
             item = self.queue.get()
             # print(
-            #      f"Working on {item.id!r}"
+            #     f"Working on {item.id!r}"
             # )  # Increase sleep time and watch the context switching.
-            if not self.waiting or item.id not in self.waiting.keys():
+            if self.should_not_wait(item):
                 try:
                     result = item.run()
                 except StopIteration:
-                    try:
-                        self.kill(
-                            *[
-                                task_id
-                                for task_id in self.tasks  # pylint: disable=C0206
-                                if self.tasks[task_id] == item
-                            ]
-                        )
-                    except TypeError:
-                        pass
+                    self.kill(item)
                 else:
                     if isinstance(result, SystemCallRequest):
                         result.handle(item, self)
                     self.schedule(item)
             else:
                 self.schedule(item)
-            time.sleep(self.interval)
+                time.sleep(self.interval)

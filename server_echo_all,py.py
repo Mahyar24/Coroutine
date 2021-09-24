@@ -23,6 +23,11 @@ CLIENTS = []
 def echo_to_all_clients(message_queue):
     """
     Sending the message to every clients except the sender himself!
+    All coroutines must have at least one yield statement that we are
+    sure it gets run, otherwise it will stock in queue and never ends.
+    So in cases like here that we are not certain are main yield statement
+    will run, we must fake a yield; e.g. a SystemCall.ID.
+    (If there is no peer except sender, we need last yield statement.)
     """
     sender, message = message_queue.get()
     for client in CLIENTS:
@@ -37,6 +42,8 @@ def echo_to_all_clients(message_queue):
                 )  # .filno() != id.
             except BrokenPipeError:
                 pass
+
+    yield SystemCallRequest(SystemCall.ID)  # Look at docstring!
 
 
 def close_client(client, message_queue, address):
