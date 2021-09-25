@@ -1,15 +1,15 @@
 #! /usr/bin/python3.9
 
 """
-This code is a prototype for having a grasp of how event loops works under the hood.
+This code is a Proof of Concept for having a grasp of how event loops works under the hood.
 The main inspiration is from David Beazley talk (http://dabeaz.com).
 Link to the talk: https://youtu.be/Y4Gt3Xjd7G8. It's awesome.
 It's worth to mention that all of the magic is happening by the select library.
 Read the docs about it. https://docs.python.org/3/library/select.html
 this code must NOT used for production.
-Look at the 'server_example.py' file for see this module in use.
+Look at the 'server_example.py' and other files for watching this module in use.
 Compatible with python3.9+. No third-party library is required, implemented in pure python.
-* This piece of code is a prototype, (but a powerful minimalistic one!)
+* This piece of code is a POC, (but a powerful minimalistic one!)
 so it's not gonna follow community (PEP) and pylint principals/recommendations strictly. *
 Mahyar@Mahyar24.com, Sat 19 Oct 2019.
 """
@@ -32,11 +32,12 @@ class SystemCall(enum.Enum):
     """
 
     ID = 1  # SystemCall for getting the unique id of the task.
-    NEW = 2  # SystemCall for making a new task.
-    KILL = 3  # SystemCall for killing the task.
-    WAIT = 4  # SystemCall for wait for some task to finish.
-    WAIT_IO_READ = 5  # SystemCall for waiting to read IO. (notified by OS Select)
-    WAIT_IO_WRITE = 6  # SystemCall for waiting to write IO. (notified by OS Select)
+    SLEEP = 2  # SystemCall for non blocking sleep.
+    NEW = 3  # SystemCall for making a new task.
+    KILL = 4  # SystemCall for killing the task.
+    WAIT = 5  # SystemCall for wait for some task to finish.
+    WAIT_IO_READ = 6  # SystemCall for waiting to read IO. (notified by OS Select)
+    WAIT_IO_WRITE = 7  # SystemCall for waiting to write IO. (notified by OS Select)
 
 
 class SystemCallRequest:  # pylint: disable=R0903
@@ -52,6 +53,10 @@ class SystemCallRequest:  # pylint: disable=R0903
         Here are some general SystemCallRequests:
 
         id = yield SystemCallRequest(SystemCall.ID) -> get id of present task in the scheduler.py
+        sleep_id = yield SystemCallRequest(SystemCall.SLEEP, sleep_time=10.0) ->
+                    Non blocking sleep for 10.0 second while event loop does others thing.
+                    You should be aware of that it's not really accurate and you should
+                    lower Scheduler sleep time for better accuracy.
         new_func_id = yield SystemCallRequest(
                     SystemCall.NEW, func=new_func, args=(..., ), kwargs={}
                         ) -> making a new task and put it in scheduler.
@@ -79,6 +84,7 @@ class SystemCallRequest:  # pylint: disable=R0903
             Callable[..., Generator[Optional[SystemCallRequest], Any, Any]]
         ] = None,
         id_: Optional[int] = None,  # When you want to kill some task or wait for them.
+        sleep_time: Optional[float] = None,
         io: Optional[Any] = None,
         args: Optional[tuple[Any, ...]] = None,
         kwargs: Optional[dict[str, Any]] = None,
@@ -87,6 +93,7 @@ class SystemCallRequest:  # pylint: disable=R0903
         self.func = func
         self.io = io  # pylint: disable=C0103
         self.id = id_  # pylint: disable=C0103
+        self.sleep_time = sleep_time
         self.args = args
         self.kwargs = kwargs
 
@@ -96,6 +103,10 @@ class SystemCallRequest:  # pylint: disable=R0903
         """
         if self.request == SystemCall.ID:
             task.val = task.id
+        if self.request == SystemCall.SLEEP:
+            if self.sleep_time is not None:
+                task.val = sch.sleep(task.id, self.sleep_time)
+                sch.waiting[task.id].add(task.val)
         elif self.request == SystemCall.NEW:
             if self.func is not None:
                 sub_id = sch.new(self.func, self.args, self.kwargs)
@@ -210,6 +221,7 @@ class Scheduler:  # pylint: disable=R0902
         self.write_waiting: DefaultDict[int, set[Task]] = defaultdict(
             set
         )  # waiting for some blocking reading IO
+        self.sleep_waiting: dict[int, float] = {}
         self.io_id: int = 0
         self.interval: float = interval
         self.run_for_ever = run_for_ever
@@ -299,6 +311,25 @@ class Scheduler:  # pylint: disable=R0902
             else:
                 self.io_checking(0)
             yield
+
+    def _sleep(self, task_id: int, sleeping_time: float) -> Generator[None, None, None]:
+        """
+        Internal mechanism used in .sleep method for non blocking sleeping.
+        Checking in every iteration for if the wait is over or not
+        (so yielding back again).
+        """
+        self.sleep_waiting[task_id] = time.time()
+        while True:
+            if (time.time() - self.sleep_waiting[task_id]) > sleeping_time:
+                del self.sleep_waiting[task_id]
+                break
+            yield
+
+    def sleep(self, task_id: int, sleeping_time: float) -> int:
+        """
+        Making a new task to yield every time unless we wait enough.
+        """
+        return self.new(self._sleep, (task_id, sleeping_time))
 
     def should_not_wait(self, item: Task) -> bool:
         """

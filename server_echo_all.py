@@ -95,8 +95,12 @@ def handle_client(client, address, message_queue):
                 SystemCall.NEW, func=echo_to_all_clients, args=(message_queue,)
             )  # Echo back the message to everybody else!
 
+            yield SystemCallRequest(SystemCall.SLEEP, sleep_time=2.0)  # Send Ack with some latency.
             yield SystemCallRequest(SystemCall.WAIT_IO_WRITE, io=client)  # Send Ack!
-            client.send(b'Ack: "' + data + b'".\n')
+            try:
+                client.send(b'Ack: "' + data + b'".\n')
+            except (BrokenPipeError, OSError):
+                break
 
     closing_id = yield SystemCallRequest(  # Making a coroutine to get closed.
         SystemCall.NEW,
@@ -131,6 +135,6 @@ def server():
 
 
 if __name__ == "__main__":
-    scheduler = Scheduler(interval=1e-5, run_for_ever=True)
+    scheduler = Scheduler(interval=1e-6, run_for_ever=True)
     scheduler.new(server)
     scheduler.run()
