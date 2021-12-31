@@ -44,7 +44,7 @@ def main():
     -> 60 * 2 = 120. But if we have a large interval like here (0.1s) we get much less
     final number. The reason is that we are sleeping a lot in our scheduler; but if we don't
     cpu usage will increase rapidly.
-    P.S: It's only a POC!
+    P.S: It's only a PoC!
     """
     scheduler = Scheduler(interval=0.1, run_for_ever=False)
     scheduler.new(print_numbers)
