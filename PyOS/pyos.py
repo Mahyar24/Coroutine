@@ -17,6 +17,7 @@ Mahyar@Mahyar24.com, Sat 19 Oct 2019.
 from __future__ import annotations
 
 import enum
+import inspect
 import queue
 import select
 import time
@@ -109,8 +110,11 @@ class SystemCallRequest:  # pylint: disable=R0903
                 sch.waiting[task.id].add(task.val)
         elif self.request == SystemCall.NEW:
             if self.func is not None:
-                sub_id = sch.new(self.func, self.args, self.kwargs)
-                task.val = sub_id
+                if inspect.isgeneratorfunction(self.func):
+                    sub_id = sch.new(self.func, self.args, self.kwargs)
+                    task.val = sub_id
+                else:
+                    raise ValueError("The Specified func is not a generator.")
             else:
                 raise ValueError("you should specify func!")
         elif self.request == SystemCall.KILL:
@@ -349,7 +353,7 @@ class Scheduler:  # pylint: disable=R0902
         """
         The main loop begins and exist in here. This method will iterate over the tasks and
         make them work concurrently. There is a sleep implementation for not using 100% of CPU but
-        if there is a demand for speed or you are working with lots of simultaneously IOs,
+        if there is a demand for speed, or you are working with lots of simultaneously IOs,
         you can lower the sleep time or make it 0.
         """
         if self.run_for_ever:
