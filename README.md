@@ -23,6 +23,7 @@ The API:
         do those tasks. If it's expected that request would return an answer you can assign
         the SystemCallRequest yield to a value. Look at ../server_example.py for a sample.py
         Here are some general SystemCallRequests:
+        
         id = yield SystemCallRequest(SystemCall.ID) -> get id of present task in the scheduler.py
         sleep_id = yield SystemCallRequest(SystemCall.SLEEP, sleep_time=10.0) ->
                     Non blocking sleep for 10.0 second while event loop does others thing.
